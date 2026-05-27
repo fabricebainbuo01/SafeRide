@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
+import { toastError } from "@/lib/toast";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { LoadingSkeleton } from "@/components/ui/Loading";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import { DollarSign, TrendingUp, Calendar } from "lucide-react";
 
 interface RevenueData {
@@ -29,56 +30,62 @@ export default function RevenuePage() {
   const [loading, setLoading] = useState(true);
 
   const fetchRevenue = useCallback(async () => {
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
+    const client = getSupabase();
+    if (!client) {
+      setLoading(false);
+      return;
+    }
+    const { data: { user: authUser } } = await client.auth.getUser();
     if (!authUser) { router.push("/auth/login"); return; }
 
-    const { data: userData } = await supabase
+    const { data: userData } = await client
       .from("users")
       .select("agency_id")
       .eq("id", authUser.id)
-      .single();
+      .maybeSingle();
 
-    if (!userData?.agency_id) return;
-
-    const { data: agencyTrips } = await supabase
-      .from("trips")
-      .select("id")
-      .eq("agency_id", userData.agency_id);
-
-    if (!agencyTrips || agencyTrips.length === 0) {
+    if (!userData?.agency_id) {
       setLoading(false);
       return;
     }
 
-    const tripIds = agencyTrips.map((t: { id: string }) => t.id);
+    type RevenueBookingRow = {
+      amount: number;
+      created_at: string;
+      payment_status: "pending" | "paid" | "refunded";
+      trip: {
+        agency_id: string;
+        origin_city: { name: string } | { name: string }[] | null;
+        destination_city: { name: string } | { name: string }[] | null;
+      } | null;
+    };
 
-    const { data: paidBookings } = await supabase
+    const { data: bookings, error } = await client
       .from("bookings")
-      .select("amount, created_at, trip_id, trip:trips(origin_city_id, destination_city_id, origin_city:cities!trips_origin_city_id_fkey(name), destination_city:cities!trips_destination_city_id_fkey(name))")
-      .in("trip_id", tripIds)
-      .eq("payment_status", "paid");
+      .select(
+        "amount, created_at, payment_status, trip:trips!inner(agency_id, origin_city:cities!trips_origin_city_id_fkey(name), destination_city:cities!trips_destination_city_id_fkey(name))"
+      )
+      .eq("trip.agency_id", userData.agency_id);
 
-    const { data: pendingBookings } = await supabase
-      .from("bookings")
-      .select("amount")
-      .in("trip_id", tripIds)
-      .eq("payment_status", "pending");
+    if (error) {
+      toastError(error, "Couldn't load revenue");
+      setLoading(false);
+      return;
+    }
 
-    const { data: refundedBookings } = await supabase
-      .from("bookings")
-      .select("amount")
-      .in("trip_id", tripIds)
-      .eq("payment_status", "refunded");
+    const rows = (bookings as unknown as RevenueBookingRow[]) ?? [];
 
-    const totalRevenue = paidBookings?.reduce((s: number, b: { amount: number }) => s + b.amount, 0) || 0;
-    const pendingRevenue = pendingBookings?.reduce((s: number, b: { amount: number }) => s + b.amount, 0) || 0;
-    const refundedRevenue = refundedBookings?.reduce((s: number, b: { amount: number }) => s + b.amount, 0) || 0;
+    const paid = rows.filter((b) => b.payment_status === "paid");
+    const totalRevenue = paid.reduce((s, b) => s + b.amount, 0);
+    const pendingRevenue = rows
+      .filter((b) => b.payment_status === "pending")
+      .reduce((s, b) => s + b.amount, 0);
+    const refundedRevenue = rows
+      .filter((b) => b.payment_status === "refunded")
+      .reduce((s, b) => s + b.amount, 0);
 
-    // Daily revenue (last 7 days)
     const dailyMap: Record<string, number> = {};
-    paidBookings?.forEach((b: { created_at: string; amount: number }) => {
+    paid.forEach((b) => {
       const day = b.created_at.split("T")[0];
       dailyMap[day] = (dailyMap[day] || 0) + b.amount;
     });
@@ -87,15 +94,18 @@ export default function RevenuePage() {
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(-7);
 
-    // Route revenue
+    const pickName = (v: { name: string } | { name: string }[] | null | undefined) => {
+      if (!v) return undefined;
+      return Array.isArray(v) ? v[0]?.name : v.name;
+    };
+
     const routeMap: Record<string, { amount: number; count: number }> = {};
-    paidBookings?.forEach((b: Record<string, unknown>) => {
-      const trip = b.trip as Record<string, Record<string, string>[]> | undefined;
-      const oName = Array.isArray(trip?.origin_city) ? trip.origin_city[0]?.name : (trip?.origin_city as unknown as Record<string, string>)?.name;
-      const dName = Array.isArray(trip?.destination_city) ? trip.destination_city[0]?.name : (trip?.destination_city as unknown as Record<string, string>)?.name;
-      const route = `${oName || "N/A"} - ${dName || "N/A"}`;
+    paid.forEach((b) => {
+      const o = pickName(b.trip?.origin_city) || "N/A";
+      const d = pickName(b.trip?.destination_city) || "N/A";
+      const route = `${o} - ${d}`;
       if (!routeMap[route]) routeMap[route] = { amount: 0, count: 0 };
-      routeMap[route].amount += (b.amount as number);
+      routeMap[route].amount += b.amount;
       routeMap[route].count += 1;
     });
     const routeRevenue = Object.entries(routeMap)

@@ -1,3 +1,11 @@
+/** Calendar date `YYYY-MM-DD` in the user's local timezone (avoids UTC drift from `toISOString()`). */
+export function localDateISOString(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export function formatCurrency(amount: number, currency: string = "XAF"): string {
   return new Intl.NumberFormat("fr-CM", {
     style: "decimal",
@@ -23,15 +31,8 @@ export function formatTime(time: string): string {
   return `${displayHour}:${m} ${period}`;
 }
 
-export function cn(...classes: (string | boolean | undefined | null)[]): string {
-  return classes.filter(Boolean).join(" ");
-}
+type ClassValue = string | number | boolean | null | undefined;
 
-export function generateBookingCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 8; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
+export function cn(...classes: ClassValue[]): string {
+  return classes.filter((c): c is string | number => Boolean(c) && typeof c !== "boolean").join(" ");
 }

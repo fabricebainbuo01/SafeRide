@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { requireSupabase } from "@/lib/supabase";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
+import { toast, toastError } from "@/lib/toast";
 import Link from "next/link";
 
 export default function RegisterPage() {
@@ -15,38 +15,79 @@ export default function RegisterPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("passenger");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [needsConfirmation, setNeedsConfirmation] = useState(false);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-    });
+    try {
+      const supabase = requireSupabase();
 
-    if (authError) {
-      setError(authError.message);
-      setLoading(false);
-      return;
-    }
-
-    if (authData.user) {
-      await supabase.from("users").insert({
-        id: authData.user.id,
-        full_name: fullName,
-        phone,
+      // The public.users profile is created automatically by the
+      // on_auth_user_created trigger using this metadata. No client-side
+      // INSERT is needed (and wouldn't work anyway when email confirmation
+      // is on, since signUp returns no session).
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
-        role,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          data: {
+            full_name: fullName,
+            phone,
+          },
+        },
       });
-    }
 
-    router.push("/dashboard");
+      if (authError) {
+        setError(authError.message);
+        toast.error("Registration failed", authError.message);
+        return;
+      }
+
+      if (!authData.session) {
+        setNeedsConfirmation(true);
+        toast.success(
+          "Check your email",
+          "We sent a confirmation link. Confirm to finish signing up."
+        );
+      } else {
+        toast.success("Welcome to SafeRide");
+        router.push("/dashboard");
+      }
+    } catch (err) {
+      toastError(err, "Registration failed");
+      setError(err instanceof Error ? err.message : "Registration failed");
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (needsConfirmation) {
+    return (
+      <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center px-4 py-12">
+        <Card className="w-full max-w-md text-center">
+          <h1 className="text-xl font-bold text-navy-800 mb-2">
+            Check your email
+          </h1>
+          <p className="text-sm text-navy-600 mb-4">
+            We sent a confirmation link to <strong>{email}</strong>. Click it to
+            verify your account, then sign in.
+          </p>
+          <Link
+            href="/auth/login"
+            className="inline-block text-sm text-primary-700 font-medium hover:underline"
+          >
+            Go to sign-in
+          </Link>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center px-4 py-12">
@@ -54,7 +95,9 @@ export default function RegisterPage() {
         <CardHeader>
           <CardTitle>Create Account</CardTitle>
           <p className="text-sm text-navy-500 mt-1">
-            Register to book trips or manage your agency
+            Register as a passenger. After you sign in, you&apos;ll see{" "}
+            <strong className="text-navy-600">Apply to list your agency</strong>{" "}
+            on your dashboard and in the footer while your account is a passenger.
           </p>
         </CardHeader>
 
@@ -97,19 +140,9 @@ export default function RegisterPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             id="password"
-            placeholder="Min 6 characters"
+            placeholder="Min 8 characters"
             required
-            minLength={6}
-          />
-          <Select
-            label="Account Type"
-            options={[
-              { value: "passenger", label: "Passenger" },
-              { value: "agency_admin", label: "Agency Admin" },
-            ]}
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            id="role"
+            minLength={8}
           />
           <Button type="submit" className="w-full" loading={loading}>
             Create Account

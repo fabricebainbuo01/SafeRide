@@ -2,22 +2,24 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
+import { toastError } from "@/lib/toast";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
 import { Card } from "@/components/ui/Card";
-import type { City } from "@/types";
+import { cn, localDateISOString } from "@/lib/utils";
+import type { City, Agency } from "@/types";
 import {
   ArrowRight,
   Shield,
-  Clock,
   MapPin,
   MessageCircle,
-  Smartphone,
   CreditCard,
   Ticket,
   Star,
-  Download,
+  Calendar,
+  ArrowUpDown,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -27,30 +29,62 @@ export default function HomePage() {
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [agencies, setAgencies] = useState<Agency[]>([]);
+  const [agency, setAgency] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activeField, setActiveField] = useState<"origin" | "destination" | null>(null);
 
   useEffect(() => {
+    const client = getSupabase();
+    if (!client) return;
+
     async function fetchCities() {
-      const { data } = await supabase
+      const { data, error } = await client!
         .from("cities")
         .select("*")
         .eq("is_active", true)
         .order("name");
+      if (error) {
+        console.error("Error fetching cities:", error);
+        toastError(error, "Couldn't load cities");
+        return;
+      }
       if (data) setCities(data);
     }
+
+    async function fetchAgencies() {
+      const { data, error } = await client!
+        .from("agencies")
+        .select("*")
+        .eq("is_active", true)
+        .order("name");
+      if (error) {
+        console.error("Error fetching agencies:", error);
+        toastError(error, "Couldn't load agencies");
+        return;
+      }
+      if (data) setAgencies(data);
+    }
+
     fetchCities();
+    fetchAgencies();
   }, []);
 
   const cityOptions = cities.map((c) => ({ value: c.id, label: c.name }));
+  const agencyOptions = [{ value: "", label: "Any Agency" }, ...agencies.map((a) => ({ value: a.id, label: a.name }))];
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!origin || !destination || !date) return;
     setLoading(true);
-    router.push(`/search?origin=${origin}&destination=${destination}&date=${date}`);
+    let url = `/search?origin=${origin}&destination=${destination}&date=${date}`;
+    if (agency) url += `&agency=${agency}`;
+    if (time) url += `&time=${time}`;
+    router.push(url);
   };
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = localDateISOString();
 
   const popularRoutes = [
     { from: "Douala", to: "Yaounde" },
@@ -92,15 +126,13 @@ export default function HomePage() {
               instantly via WhatsApp.
             </p>
             <div className="flex flex-wrap gap-3">
-              <a
-                href="https://play.google.com/store/apps/details?id=com.saferide.app"
-                target="_blank"
-                rel="noopener noreferrer"
+              <Link
+                href="/routes"
                 className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium bg-navy-700 text-white hover:bg-navy-600 transition-colors"
               >
-                <Download size={16} />
-                Download Mobile App
-              </a>
+                <MapPin size={16} />
+                Explore Routes
+              </Link>
               <Link
                 href="/search"
                 className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium bg-primary-700 text-white hover:bg-primary-800 transition-colors"
@@ -112,34 +144,80 @@ export default function HomePage() {
           </div>
 
           {/* Booking Form */}
-          <Card className="max-w-3xl mt-10">
-            <h2 className="text-lg font-bold text-navy-800 mb-4">
-              Book Your Trip
-            </h2>
+          <Card className="max-w-3xl mt-10 relative overflow-visible text-black">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-black">
+                Book Your Trip
+              </h2>
+              {activeField && (
+                <button 
+                  onClick={() => setActiveField(null)}
+                  className="text-xs text-navy-500 hover:text-navy-800 flex items-center gap-1"
+                >
+                  <X size={14} />
+                  Close Selector
+                </button>
+              )}
+            </div>
+
             <form onSubmit={handleSearch} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <Select
-                  label="From"
-                  options={cityOptions}
-                  placeholder="Select city"
-                  value={origin}
-                  onChange={(e) => setOrigin(e.target.value)}
-                  id="origin"
-                />
-                <Select
-                  label="To"
-                  options={cityOptions}
-                  placeholder="Select city"
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
-                  id="destination"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-7 gap-4 items-end">
+                <div className="sm:col-span-3 relative">
+                  <Select
+                    label="From"
+                    options={cityOptions}
+                    placeholder="Select city"
+                    value={origin}
+                    onChange={(e) => {
+                      setOrigin(e.target.value);
+                      setActiveField(null);
+                    }}
+                    onFocus={() => setActiveField("origin")}
+                    id="origin"
+                    className={cn(activeField === "origin" && "ring-2 ring-primary-700")}
+                  />
+                </div>
+
+                <div className="flex justify-center sm:pb-2 -my-2 sm:my-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const temp = origin;
+                      setOrigin(destination);
+                      setDestination(temp);
+                    }}
+                    className="p-2 rounded-full bg-white sm:bg-transparent border border-navy-200 sm:border-0 hover:bg-navy-100 transition-colors text-navy-400 hover:text-primary-700"
+                    aria-label="Swap origin and destination"
+                    title="Swap cities"
+                  >
+                    <ArrowUpDown size={20} className="sm:rotate-90" />
+                  </button>
+                </div>
+
+                <div className="sm:col-span-3">
+                  <Select
+                    label="To"
+                    options={cityOptions}
+                    placeholder="Select city"
+                    value={destination}
+                    onChange={(e) => {
+                      setDestination(e.target.value);
+                      setActiveField(null);
+                    }}
+                    onFocus={() => setActiveField("destination")}
+                    id="destination"
+                    className={cn(activeField === "destination" && "ring-2 ring-action-700")}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label
                     htmlFor="date"
-                    className="block text-sm font-medium text-navy-700 mb-1"
+                    className="block text-sm font-medium text-black mb-1"
                   >
-                    Date
+                    Travel Date
                   </label>
                   <input
                     type="date"
@@ -147,29 +225,94 @@ export default function HomePage() {
                     min={today}
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-navy-300 bg-white focus:outline-none focus:ring-2 focus:ring-primary-700 focus:border-transparent"
+                    className="w-full px-3 py-2 text-sm border border-navy-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-primary-700 focus:border-transparent"
                   />
                 </div>
+                <div>
+                  <label
+                    htmlFor="time"
+                    className="block text-sm font-medium text-black mb-1"
+                  >
+                    Time (Optional)
+                  </label>
+                  <input
+                    type="time"
+                    id="time"
+                    value={time}
+                    onChange={(e) => setTime(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-navy-300 bg-white text-black focus:outline-none focus:ring-2 focus:ring-primary-700 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <Select
+                    label="Travel Agency (Optional)"
+                    options={agencyOptions}
+                    value={agency}
+                    onChange={(e) => setAgency(e.target.value)}
+                    id="agency"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="w-full"
+                    loading={loading}
+                    disabled={!origin || !destination || !date}
+                  >
+                    Search Trips
+                    <ArrowRight size={16} className="ml-2" />
+                  </Button>
+                </div>
               </div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <Button
-                  type="submit"
-                  size="lg"
-                  loading={loading}
-                  disabled={!origin || !destination || !date}
-                >
-                  Search Trips
-                  <ArrowRight size={16} className="ml-2" />
-                </Button>
-                <p className="text-xs text-navy-400">
-                  By submitting, you agree to our{" "}
-                  <Link href="/terms" className="text-primary-700 hover:underline">
-                    Terms &amp; Conditions
-                  </Link>
-                  . A SafeRide agent will confirm availability and price on
-                  WhatsApp.
-                </p>
-              </div>
+
+              {/* Interactive Town Selector */}
+              {activeField && (
+                <div className="mt-4 p-4 border-2 border-navy-100 bg-navy-50/50 rounded-lg animate-in fade-in slide-in-from-top-2 duration-300 text-black">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-bold uppercase tracking-wider text-black">
+                      Select {activeField === "origin" ? "Departure" : "Destination"} Town
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                    {cities.map((city) => (
+                      <button
+                        key={`quick-${activeField}-${city.id}`}
+                        type="button"
+                        onClick={() => {
+                          if (activeField === "origin") {
+                            setOrigin(city.id);
+                            setActiveField("destination");
+                          } else {
+                            setDestination(city.id);
+                            setActiveField(null);
+                          }
+                        }}
+                        className={cn(
+                          "px-3 py-2 text-xs font-medium border text-left transition-all hover:shadow-sm flex flex-col",
+                          (activeField === "origin" ? origin : destination) === city.id
+                            ? (activeField === "origin" 
+                                ? "border-primary-700 bg-primary-100 text-primary-900" 
+                                : "border-action-700 bg-action-100 text-action-900")
+                            : "border-navy-200 bg-white text-navy-700 hover:border-primary-400"
+                        )}
+                      >
+                        <span>{city.name}</span>
+                        <span className="text-[9px] opacity-60 uppercase">{city.region}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[10px] text-navy-400 text-center sm:text-left mt-2">
+                By submitting, you agree to our{" "}
+                <Link href="/terms" className="text-primary-700 hover:underline">
+                  Terms &amp; Conditions
+                </Link>
+                . A SafeRide agent will confirm availability and price on
+                WhatsApp.
+              </p>
             </form>
           </Card>
         </div>
@@ -181,7 +324,7 @@ export default function HomePage() {
           Why Choose SafeRide
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card>
+          <Card hover>
             <div className="w-10 h-10 bg-primary-700 flex items-center justify-center mb-4">
               <Shield size={20} className="text-white" />
             </div>
@@ -191,7 +334,7 @@ export default function HomePage() {
               transport providers across Cameroon.
             </p>
           </Card>
-          <Card>
+          <Card hover>
             <div className="w-10 h-10 bg-action-700 flex items-center justify-center mb-4">
               <MapPin size={20} className="text-white" />
             </div>
@@ -203,9 +346,9 @@ export default function HomePage() {
               Limbe, and more.
             </p>
           </Card>
-          <Card>
+          <Card hover>
             <div className="w-10 h-10 bg-navy-700 flex items-center justify-center mb-4">
-              <Smartphone size={20} className="text-white" />
+              <Ticket size={20} className="text-white" />
             </div>
             <h3 className="font-semibold text-navy-800 mb-2">Easy Booking</h3>
             <p className="text-sm text-navy-500 leading-relaxed">
@@ -213,16 +356,17 @@ export default function HomePage() {
               WhatsApp.
             </p>
           </Card>
-          <Card>
+          <Card hover>
             <div className="w-10 h-10 bg-primary-800 flex items-center justify-center mb-4">
               <CreditCard size={20} className="text-white" />
             </div>
             <h3 className="font-semibold text-navy-800 mb-2">
-              Mobile Money &amp; PayPal
+              Payments (roadmap)
             </h3>
             <p className="text-sm text-navy-500 leading-relaxed">
-              Pay securely with MTN MoMo, Orange Money, or PayPal. Receive
-              your e-ticket instantly.
+              MTN MoMo, Orange Money, and PayPal are being integrated next.
+              Today you confirm with our team on WhatsApp; checkout includes a
+              mock pay button for testing only.
             </p>
           </Card>
         </div>
@@ -285,7 +429,7 @@ export default function HomePage() {
           </p>
           <div className="flex gap-3">
             <a
-              href="https://wa.me/237678149836"
+              href="https://wa.me/237683073601"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-700 border border-primary-700 hover:bg-primary-50 transition-colors"
@@ -311,7 +455,7 @@ export default function HomePage() {
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {testimonials.map((t) => (
-              <Card key={t.name}>
+              <Card key={t.name} hover>
                 <div className="flex items-center gap-1 mb-3">
                   {[1, 2, 3, 4, 5].map((s) => (
                     <Star
@@ -331,38 +475,27 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Download App */}
+      {/* Explore routes */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="bg-navy-800 text-white p-8 sm:p-12">
-          <div className="max-w-2xl">
-            <h2 className="text-2xl font-bold mb-3">
-              Download Our Mobile App
+        <div className="bg-navy-800 text-white p-8 sm:p-12 overflow-hidden relative">
+          <div className="max-w-2xl z-10 relative">
+            <h2 className="text-3xl font-bold mb-4">
+              Explore inter-urban routes
             </h2>
-            <p className="text-navy-300 leading-relaxed mb-6">
-              Book tickets on the go with our easy-to-use mobile application.
-              Available on Android and iOS.
+            <p className="text-navy-300 text-lg leading-relaxed mb-8">
+              Browse verified bus corridors and CAMRAIL passenger routes across Cameroon,
+              then jump straight into search for live schedules and fares.
             </p>
-            <div className="flex flex-wrap gap-3">
-              <a
-                href="https://play.google.com/store/apps/details?id=com.saferide.app"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium bg-white text-navy-800 hover:bg-navy-100 transition-colors"
-              >
-                <Download size={16} />
-                Get it on Google Play
-              </a>
-              <a
-                href="https://apps.apple.com/app/saferide"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium border border-white text-white hover:bg-navy-700 transition-colors"
-              >
-                <Download size={16} />
-                Download on App Store
-              </a>
-            </div>
+            <Link
+              href="/routes"
+              className="inline-flex items-center gap-2 px-6 py-3 text-sm font-bold bg-primary-700 text-white hover:bg-primary-800 transition-all hover-scale active-scale"
+            >
+              <Calendar size={20} />
+              Explore Routes
+              <ArrowRight size={18} />
+            </Link>
           </div>
+          <div className="absolute -bottom-16 -right-10 w-56 h-56 bg-primary-700/15 rounded-full blur-3xl pointer-events-none" />
         </div>
       </section>
     </div>

@@ -4,15 +4,33 @@ import { ReactNode, HTMLAttributes } from "react";
 interface CardProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
   className?: string;
+  /** Pass `false` to remove the default `p-6` and lay out content yourself. */
   padding?: boolean;
+  /** Lift on hover; pair with `<button>`/anchor wrappers, not bare cards. */
+  hover?: boolean;
+  /**
+   * Plays the fade-in entrance animation on mount.
+   * Default `false` so list re-renders (e.g. after a real-time event)
+   * don't replay the animation on every item.
+   */
+  animateIn?: boolean;
 }
 
-export function Card({ children, className, padding = true, ...props }: CardProps) {
+export function Card({
+  children,
+  className,
+  padding = true,
+  hover = false,
+  animateIn = false,
+  ...props
+}: CardProps) {
   return (
     <div
       className={cn(
         "bg-white border border-navy-200",
+        animateIn && "fade-in",
         padding && "p-6",
+        hover && "hover-scale",
         className
       )}
       {...props}

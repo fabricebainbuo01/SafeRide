@@ -5,9 +5,6 @@ interface BookingState {
   searchParams: SearchParams;
   setSearchParams: (params: SearchParams) => void;
 
-  searchResults: Trip[];
-  setSearchResults: (trips: Trip[]) => void;
-
   selectedTrip: Trip | null;
   setSelectedTrip: (trip: Trip | null) => void;
 
@@ -23,20 +20,11 @@ interface BookingState {
 
   seatLayout: SeatLayout | null;
   setSeatLayout: (layout: SeatLayout | null) => void;
-
-  isSearching: boolean;
-  setIsSearching: (val: boolean) => void;
-
-  isBooking: boolean;
-  setIsBooking: (val: boolean) => void;
 }
 
 export const useBookingStore = create<BookingState>((set) => ({
-  searchParams: { origin: "", destination: "", date: "" },
+  searchParams: { origin: "", destination: "", date: "", agency: "" },
   setSearchParams: (params) => set({ searchParams: params }),
-
-  searchResults: [],
-  setSearchResults: (trips) => set({ searchResults: trips }),
 
   selectedTrip: null,
   setSelectedTrip: (trip) => set({ selectedTrip: trip }),
@@ -58,10 +46,4 @@ export const useBookingStore = create<BookingState>((set) => ({
 
   seatLayout: null,
   setSeatLayout: (layout) => set({ seatLayout: layout }),
-
-  isSearching: false,
-  setIsSearching: (val) => set({ isSearching: val }),
-
-  isBooking: false,
-  setIsBooking: (val) => set({ isBooking: val }),
 }));

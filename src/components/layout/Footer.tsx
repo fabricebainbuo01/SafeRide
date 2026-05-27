@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { MapPin } from "lucide-react";
+import { FooterPassengerApplyLink } from "@/components/layout/FooterPassengerApplyLink";
 
 export function Footer() {
   return (
@@ -16,14 +18,13 @@ export function Footer() {
               Your trusted partner for bus travel and CAMRAIL passenger routes
               across Cameroon.
             </p>
-            <a
-              href="https://play.google.com/store/apps/details?id=com.saferide.app"
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              href="/routes"
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-700 hover:bg-primary-800 transition-colors"
             >
-              Get App
-            </a>
+              <MapPin size={16} />
+              Explore Routes
+            </Link>
           </div>
 
           <div>
@@ -43,7 +44,7 @@ export function Footer() {
               </li>
               <li>
                 <Link href="/routes" className="text-sm text-navy-400 hover:text-white transition-colors">
-                  Routes
+                  Explore Routes
                 </Link>
               </li>
               <li>
@@ -71,7 +72,7 @@ export function Footer() {
             <ul className="space-y-2">
               <li>
                 <a
-                  href="https://wa.me/237678149836"
+                  href="https://wa.me/237683073601"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-navy-400 hover:text-white transition-colors"
@@ -84,6 +85,7 @@ export function Footer() {
                   Terms &amp; Conditions
                 </Link>
               </li>
+              <FooterPassengerApplyLink />
               <li>
                 <Link href="/admin" className="text-sm text-navy-400 hover:text-white transition-colors">
                   Agency Portal
@@ -104,10 +106,10 @@ export function Footer() {
               </li>
               <li>
                 <a
-                  href="tel:+237678149836"
+                  href="tel:+237683073601"
                   className="text-sm text-navy-400 hover:text-white transition-colors"
                 >
-                  +237 678.149.836
+                  +237 683.073.601
                 </a>
               </li>
               <li>

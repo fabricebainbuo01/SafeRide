@@ -2,17 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { getSupabase, getSessionUser } from "@/lib/supabase";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { LoadingSkeleton } from "@/components/ui/Loading";
 import { formatCurrency } from "@/lib/utils";
-import type { User } from "@/types";
-import { Bus, Calendar, Ticket, DollarSign } from "lucide-react";
+import { toastError } from "@/lib/toast";
+import { Bus, Calendar, Ticket, DollarSign, MapPin } from "lucide-react";
 
 export default function AdminPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
   const [stats, setStats] = useState({
     totalBuses: 0,
     activeTrips: 0,
@@ -21,88 +20,81 @@ export default function AdminPage() {
   });
   const [loading, setLoading] = useState(true);
 
-  const fetchUser = useCallback(async () => {
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
-    if (!authUser) {
-      router.push("/auth/login");
+  const loadAll = useCallback(async (signal: { cancelled: boolean }) => {
+    const client = getSupabase();
+    if (!client) {
+      setLoading(false);
       return;
     }
-    const { data } = await supabase
-      .from("users")
-      .select("*, agency:agencies(id)")
-      .eq("id", authUser.id)
-      .single();
-    if (data) {
-      const u = data as unknown as User & { agency: { id: string } | null };
-      setUser(data as unknown as User);
-      if (u.role !== "agency_admin" || !u.agency) {
-        router.push("/dashboard");
-        return;
-      }
+
+    const authUser = await getSessionUser(client);
+    if (signal.cancelled) return;
+    if (!authUser) {
+      router.push("/auth/login");
+      setLoading(false);
+      return;
     }
-  }, [router]);
 
-  const fetchStats = useCallback(async () => {
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
-    if (!authUser) return;
-
-    const { data: userData } = await supabase
+    const { data: profile } = await client
       .from("users")
-      .select("agency_id")
+      .select("role, agency_id")
       .eq("id", authUser.id)
-      .single();
+      .maybeSingle();
 
-    if (!userData?.agency_id) return;
-    const agencyId = userData.agency_id;
+    if (signal.cancelled) return;
+    if (!profile || profile.role !== "agency_admin" || !profile.agency_id) {
+      router.push("/dashboard");
+      setLoading(false);
+      return;
+    }
 
-    const [busesRes, tripsRes, bookingsRes] = await Promise.all([
-      supabase
+    const agencyId = profile.agency_id as string;
+
+    const [busesRes, tripsRes, paidRes] = await Promise.all([
+      client
         .from("buses")
         .select("id", { count: "exact", head: true })
         .eq("agency_id", agencyId),
-      supabase
+      client
         .from("trips")
         .select("id", { count: "exact", head: true })
         .eq("agency_id", agencyId)
         .eq("is_active", true),
-      supabase
+      client
         .from("bookings")
-        .select("amount")
+        .select("amount, trip:trips!inner(agency_id)")
         .eq("payment_status", "paid")
-        .in(
-          "trip_id",
-          (
-            await supabase
-              .from("trips")
-              .select("id")
-              .eq("agency_id", agencyId)
-          ).data?.map((t: { id: string }) => t.id) || []
-        ),
+        .eq("trip.agency_id", agencyId),
     ]);
 
+    if (signal.cancelled) return;
+
+    if (busesRes.error) toastError(busesRes.error, "Couldn't load fleet count");
+    if (tripsRes.error) toastError(tripsRes.error, "Couldn't load trip count");
+    if (paidRes.error) toastError(paidRes.error, "Couldn't load revenue");
+
     const revenue =
-      bookingsRes.data?.reduce(
-        (sum: number, b: { amount: number }) => sum + b.amount,
+      paidRes.data?.reduce(
+        (sum: number, b: { amount: number }) => sum + (b.amount ?? 0),
         0
-      ) || 0;
+      ) ?? 0;
 
     setStats({
-      totalBuses: busesRes.count || 0,
-      activeTrips: tripsRes.count || 0,
-      totalBookings: bookingsRes.data?.length || 0,
+      totalBuses: busesRes.count ?? 0,
+      activeTrips: tripsRes.count ?? 0,
+      totalBookings: paidRes.data?.length ?? 0,
       revenue,
     });
     setLoading(false);
-  }, []);
+  }, [router]);
 
   useEffect(() => {
-    fetchUser();
-    fetchStats();
-  }, [fetchUser, fetchStats]);
+    const signal = { cancelled: false };
+    void loadAll(signal);
+    return () => {
+      signal.cancelled = true;
+    };
+  }, [loadAll]);
 
   if (loading) {
     return (
@@ -156,7 +148,7 @@ export default function AdminPage() {
               <Ticket size={18} className="text-navy-600" />
             </div>
             <div>
-              <p className="text-xs text-navy-400">Total Bookings</p>
+              <p className="text-xs text-navy-400">Paid Bookings</p>
               <p className="text-lg font-bold text-navy-800">
                 {stats.totalBookings}
               </p>
@@ -175,21 +167,29 @@ export default function AdminPage() {
           </Card>
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Card className="hover:border-primary-700 transition-colors cursor-pointer" onClick={() => router.push("/admin/fleet")}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card hover className="hover:border-primary-700 transition-colors cursor-pointer" onClick={() => router.push("/admin/routes")}>
+            <CardTitle className="flex items-center gap-2">
+              <MapPin size={18} className="text-primary-700 shrink-0" />
+              Routes you serve
+            </CardTitle>
+            <p className="text-sm text-navy-500 mt-2">
+              Publish origin–destination pairs for moderator review before they appear publicly.
+            </p>
+          </Card>
+          <Card hover className="hover:border-primary-700 transition-colors cursor-pointer" onClick={() => router.push("/admin/fleet")}>
             <CardTitle>Manage Fleet</CardTitle>
             <p className="text-sm text-navy-500 mt-2">
               Add, edit, or deactivate buses in your fleet.
             </p>
           </Card>
-          <Card className="hover:border-primary-700 transition-colors cursor-pointer" onClick={() => router.push("/admin/schedules")}>
+          <Card hover className="hover:border-primary-700 transition-colors cursor-pointer" onClick={() => router.push("/admin/schedules")}>
             <CardTitle>Schedule Trips</CardTitle>
             <p className="text-sm text-navy-500 mt-2">
               Create and manage departure schedules.
             </p>
           </Card>
-          <Card className="hover:border-primary-700 transition-colors cursor-pointer" onClick={() => router.push("/admin/bookings")}>
+          <Card hover className="hover:border-primary-700 transition-colors cursor-pointer" onClick={() => router.push("/admin/bookings")}>
             <CardTitle>View Bookings</CardTitle>
             <p className="text-sm text-navy-500 mt-2">
               Check in passengers and manage bookings.

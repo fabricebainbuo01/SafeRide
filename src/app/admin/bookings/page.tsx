@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
+import { toast, toastError } from "@/lib/toast";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -34,39 +35,35 @@ export default function AdminBookingsPage() {
   const [foundBooking, setFoundBooking] = useState<Booking | null>(null);
 
   const fetchBookings = useCallback(async () => {
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
+    const client = getSupabase();
+    if (!client) {
+      setLoading(false);
+      return;
+    }
+    const { data: { user: authUser } } = await client.auth.getUser();
     if (!authUser) { router.push("/auth/login"); return; }
 
-    const { data: userData } = await supabase
+    const { data: userData } = await client
       .from("users")
       .select("agency_id")
       .eq("id", authUser.id)
-      .single();
+      .maybeSingle();
 
-    if (!userData?.agency_id) return;
-
-    const { data: agencyTrips } = await supabase
-      .from("trips")
-      .select("id")
-      .eq("agency_id", userData.agency_id);
-
-    if (!agencyTrips || agencyTrips.length === 0) {
+    if (!userData?.agency_id) {
       setLoading(false);
       return;
     }
 
-    const tripIds = agencyTrips.map((t: { id: string }) => t.id);
-
-    const { data } = await supabase
+    // Single round-trip via inner join — no more dependent fetch + .in().
+    const { data, error } = await client
       .from("bookings")
       .select(
-        `*, trip:trips(id, departure_date, departure_time, status, origin_city:cities!trips_origin_city_id_fkey(id, name), destination_city:cities!trips_destination_city_id_fkey(id, name))`
+        `*, trip:trips!inner(id, agency_id, departure_date, departure_time, status, origin_city:cities!trips_origin_city_id_fkey(id, name), destination_city:cities!trips_destination_city_id_fkey(id, name))`
       )
-      .in("trip_id", tripIds)
+      .eq("trip.agency_id", userData.agency_id)
       .order("created_at", { ascending: false });
 
+    if (error) toastError(error, "Couldn't load bookings");
     if (data) setBookings(data as unknown as Booking[]);
     setLoading(false);
   }, [router]);
@@ -76,10 +73,17 @@ export default function AdminBookingsPage() {
   }, [fetchBookings]);
 
   const handleCheckIn = async (bookingId: string) => {
-    await supabase
+    const client = getSupabase();
+    if (!client) return;
+    const { error } = await client
       .from("bookings")
       .update({ status: "checked_in", checked_in_at: new Date().toISOString() })
       .eq("id", bookingId);
+    if (error) {
+      toastError(error, "Check-in failed");
+      return;
+    }
+    toast.success("Passenger checked in");
     fetchBookings();
     if (foundBooking?.id === bookingId) {
       setFoundBooking(null);
@@ -88,28 +92,34 @@ export default function AdminBookingsPage() {
   };
 
   const handleCancel = async (bookingId: string) => {
-    await supabase
+    const client = getSupabase();
+    if (!client) return;
+    const { error } = await client
       .from("bookings")
       .update({ status: "cancelled" })
       .eq("id", bookingId);
+    if (error) {
+      toastError(error, "Cancel failed");
+      return;
+    }
+    toast.success("Booking cancelled");
     fetchBookings();
   };
 
   const handleSearch = async () => {
     if (!searchCode.trim()) return;
-    const { data } = await supabase
+    const client = getSupabase();
+    if (!client) return;
+    const { data, error } = await client
       .from("bookings")
       .select(
         `*, trip:trips(id, departure_date, departure_time, status, origin_city:cities!trips_origin_city_id_fkey(id, name), destination_city:cities!trips_destination_city_id_fkey(id, name))`
       )
       .eq("booking_code", searchCode.trim().toUpperCase())
-      .single();
+      .maybeSingle();
 
-    if (data) {
-      setFoundBooking(data as unknown as Booking);
-    } else {
-      setFoundBooking(null);
-    }
+    if (error) toastError(error, "Lookup failed");
+    setFoundBooking((data as unknown as Booking) ?? null);
   };
 
   if (loading) {
@@ -126,14 +136,25 @@ export default function AdminBookingsPage() {
 
   return (
     <div className="flex">
-      <AdminSidebar />
+      <div className="print:hidden">
+        <AdminSidebar />
+      </div>
       <div className="flex-1 p-6 sm:p-8">
-        <h1 className="text-2xl font-bold text-navy-800 mb-6">
-          Bookings & Check-In
-        </h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold text-navy-800">
+            Bookings & Check-In
+          </h1>
+          <div className="hidden print:block text-center w-full mb-4">
+            <h1 className="text-3xl font-bold uppercase tracking-widest">Passenger Manifesto</h1>
+            <p className="text-sm text-navy-500">{new Date().toLocaleDateString()}</p>
+          </div>
+          <Button variant="outline" onClick={() => window.print()} className="print:hidden">
+            Print Manifesto
+          </Button>
+        </div>
 
         {/* Check-In Search */}
-        <Card className="mb-6">
+        <Card className="mb-6 print:hidden">
           <CardHeader>
             <CardTitle>Quick Check-In</CardTitle>
           </CardHeader>

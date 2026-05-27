@@ -19,7 +19,6 @@ export function SeatGrid({
   maxSelectable = 4,
 }: SeatGridProps) {
   const { rows, cols, aisleAfter, unavailable } = layout;
-  const totalSeats = rows * cols;
 
   const isOccupied = (seat: number) => occupiedSeats.includes(seat);
   const isUnavailable = (seat: number) => unavailable.includes(seat);
@@ -47,14 +46,14 @@ export function SeatGrid({
         </div>
       </div>
 
-      <div className="bg-navy-50 border border-navy-200 p-4 inline-block">
+      <div className="bg-navy-50 border border-navy-200 p-4 inline-block max-w-full overflow-x-auto">
         <div className="flex justify-center mb-3">
-          <div className="w-20 h-6 bg-navy-800 text-white text-xs flex items-center justify-center font-medium">
+          <div className="w-16 sm:w-20 h-6 bg-navy-800 text-white text-[10px] sm:text-xs flex items-center justify-center font-medium">
             FRONT
           </div>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-1 sm:space-y-2">
           {Array.from({ length: rows }, (_, rowIdx) => {
             const rowStart = rowIdx * cols + 1;
             return (
@@ -67,12 +66,12 @@ export function SeatGrid({
                     return (
                       <div key={seatNum} className="flex items-center">
                         <div
-                          className="w-10 h-10 bg-navy-100 border border-navy-200 flex items-center justify-center text-xs text-navy-400"
+                          className="w-8 h-8 sm:w-10 sm:h-10 bg-navy-100 border border-navy-200 flex items-center justify-center text-[10px] sm:text-xs text-navy-400"
                           title={`Seat ${seatNum} - Unavailable`}
                         >
                           {seatNum}
                         </div>
-                        {isAisle && <div className="w-4" />}
+                        {isAisle && <div className="w-2 sm:w-4" />}
                       </div>
                     );
                   }
@@ -81,12 +80,12 @@ export function SeatGrid({
                     return (
                       <div key={seatNum} className="flex items-center">
                         <div
-                          className="w-10 h-10 bg-navy-300 flex items-center justify-center text-xs text-white cursor-not-allowed"
+                          className="w-8 h-8 sm:w-10 sm:h-10 bg-navy-300 flex items-center justify-center text-[10px] sm:text-xs text-white cursor-not-allowed"
                           title={`Seat ${seatNum} - Occupied`}
                         >
                           {seatNum}
                         </div>
-                        {isAisle && <div className="w-4" />}
+                        {isAisle && <div className="w-2 sm:w-4" />}
                       </div>
                     );
                   }
@@ -97,11 +96,12 @@ export function SeatGrid({
                       <button
                         type="button"
                         className={cn(
-                          "w-10 h-10 border flex items-center justify-center text-xs font-medium transition-colors",
+                          "w-8 h-8 sm:w-10 sm:h-10 border flex items-center justify-center text-[10px] sm:text-xs font-bold transition-all",
                           selected
-                            ? "bg-primary-700 text-white border-primary-700"
+                            ? "bg-primary-700 text-white border-primary-700 shadow-sm"
                             : "bg-white border-navy-300 text-navy-700 hover:border-primary-700 hover:text-primary-700",
-                          !selected && !canSelect && "cursor-not-allowed opacity-50"
+                          !selected && !canSelect && "cursor-not-allowed opacity-50",
+                          "active-scale"
                         )}
                         onClick={() => onSeatClick(seatNum)}
                         disabled={!selected && !canSelect}
@@ -109,7 +109,7 @@ export function SeatGrid({
                       >
                         {seatNum}
                       </button>
-                      {isAisle && <div className="w-4" />}
+                      {isAisle && <div className="w-2 sm:w-4" />}
                     </div>
                   );
                 })}
@@ -121,7 +121,7 @@ export function SeatGrid({
 
       {selectedSeats.length > 0 && (
         <p className="mt-3 text-sm text-navy-600">
-          Selected: {selectedSeats.sort((a, b) => a - b).join(", ")}
+          Selected: {[...selectedSeats].sort((a, b) => a - b).join(", ")}
         </p>
       )}
     </div>

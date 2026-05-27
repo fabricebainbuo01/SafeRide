@@ -22,7 +22,7 @@ const statusBadge: Record<string, "success" | "warning" | "danger" | "info" | "d
 
 export function TripCard({ trip, onSelect }: TripCardProps) {
   return (
-    <Card className="hover:border-primary-700 transition-colors">
+    <Card hover className="hover:border-primary-700 transition-colors">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">

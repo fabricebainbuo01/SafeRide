@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
+import { toast, toastError } from "@/lib/toast";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -10,9 +11,9 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { LoadingSkeleton } from "@/components/ui/Loading";
-import { formatTime, formatCurrency, formatDate } from "@/lib/utils";
+import { formatTime, formatCurrency, formatDate, localDateISOString } from "@/lib/utils";
 import type { Bus, City, Trip } from "@/types";
-import { Plus, Clock } from "lucide-react";
+import { Plus } from "lucide-react";
 
 const statusVariant: Record<string, "success" | "warning" | "danger" | "info" | "default"> = {
   scheduled: "info",
@@ -28,6 +29,8 @@ export default function SchedulesPage() {
   const [buses, setBuses] = useState<Bus[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [loading, setLoading] = useState(true);
+  /** Set when profile row exists but agency_id is null (not the same as “no trips yet”). */
+  const [missingAgencyLink, setMissingAgencyLink] = useState(false);
   const [showForm, setShowForm] = useState(false);
 
   const [busId, setBusId] = useState("");
@@ -39,29 +42,45 @@ export default function SchedulesPage() {
   const [price, setPrice] = useState("");
 
   const fetchData = useCallback(async () => {
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
+    const client = getSupabase();
+    if (!client) {
+      setMissingAgencyLink(false);
+      setLoading(false);
+      return;
+    }
+    const { data: { user: authUser } } = await client.auth.getUser();
     if (!authUser) { router.push("/auth/login"); return; }
 
-    const { data: userData } = await supabase
+    const { data: userData } = await client
       .from("users")
       .select("agency_id")
       .eq("id", authUser.id)
-      .single();
+      .maybeSingle();
 
-    if (!userData?.agency_id) return;
+    if (!userData?.agency_id) {
+      setMissingAgencyLink(true);
+      setTrips([]);
+      setBuses([]);
+      setCities([]);
+      setLoading(false);
+      return;
+    }
+    setMissingAgencyLink(false);
     const agencyId = userData.agency_id;
 
     const [tripsRes, busesRes, citiesRes] = await Promise.all([
-      supabase
+      client
         .from("trips")
         .select(`*, bus:buses(id, model, plate_number), origin_city:cities!trips_origin_city_id_fkey(id, name), destination_city:cities!trips_destination_city_id_fkey(id, name)`)
         .eq("agency_id", agencyId)
         .order("departure_date", { ascending: false }),
-      supabase.from("buses").select("*").eq("agency_id", agencyId).eq("is_active", true),
-      supabase.from("cities").select("*").eq("is_active", true).order("name"),
+      client.from("buses").select("*").eq("agency_id", agencyId).eq("is_active", true),
+      client.from("cities").select("*").eq("is_active", true).order("name"),
     ]);
+
+    if (tripsRes.error) toastError(tripsRes.error, "Couldn't load trips");
+    if (busesRes.error) toastError(busesRes.error, "Couldn't load buses");
+    if (citiesRes.error) toastError(citiesRes.error, "Couldn't load cities");
 
     if (tripsRes.data) setTrips(tripsRes.data as unknown as Trip[]);
     if (busesRes.data) setBuses(busesRes.data as unknown as Bus[]);
@@ -74,20 +93,28 @@ export default function SchedulesPage() {
   }, [fetchData]);
 
   const handleCreateTrip = async () => {
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
+    const client = getSupabase();
+    if (!client) return;
+    const { data: { user: authUser } } = await client.auth.getUser();
     if (!authUser) return;
 
-    const { data: userData } = await supabase
+    const { data: userData } = await client
       .from("users")
       .select("agency_id")
       .eq("id", authUser.id)
-      .single();
+      .maybeSingle();
 
-    if (!userData?.agency_id) return;
+    if (!userData?.agency_id) {
+      toast.error("Your account is not linked to an agency");
+      return;
+    }
 
-    await supabase.from("trips").insert({
+    if (originCityId === destinationCityId) {
+      toast.error("Origin and destination must differ");
+      return;
+    }
+
+    const { error } = await client.from("trips").insert({
       agency_id: userData.agency_id,
       bus_id: busId,
       origin_city_id: originCityId,
@@ -97,6 +124,12 @@ export default function SchedulesPage() {
       estimated_arrival_time: estimatedArrival || null,
       price: parseInt(price),
     });
+
+    if (error) {
+      toastError(error, "Could not create trip");
+      return;
+    }
+    toast.success("Trip created");
 
     setShowForm(false);
     setBusId("");
@@ -110,7 +143,34 @@ export default function SchedulesPage() {
   };
 
   const handleUpdateStatus = async (tripId: string, status: string) => {
-    await supabase.from("trips").update({ status }).eq("id", tripId);
+    const client = getSupabase();
+    if (!client) return;
+    const { error } = await client.from("trips").update({ status }).eq("id", tripId);
+    if (error) {
+      toastError(error, "Could not update status");
+      return;
+    }
+    toast.success(`Status: ${status}`);
+    fetchData();
+  };
+
+  /** Hard-delete so the trip no longer appears in search or admin lists (FK cascades remove dependent booking shells). */
+  const handleDeleteTrip = async (tripId: string) => {
+    if (
+      !window.confirm(
+        "Remove this trip from SafeRide? It will no longer appear for passengers or in schedules. Related booking rows tied only to this trip will be removed."
+      )
+    ) {
+      return;
+    }
+    const client = getSupabase();
+    if (!client) return;
+    const { error } = await client.from("trips").delete().eq("id", tripId);
+    if (error) {
+      toastError(error, "Could not remove trip");
+      return;
+    }
+    toast.success("Trip removed from the platform");
     fetchData();
   };
 
@@ -124,7 +184,7 @@ export default function SchedulesPage() {
     label: c.name,
   }));
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = localDateISOString();
 
   if (loading) {
     return (
@@ -225,10 +285,24 @@ export default function SchedulesPage() {
           </Card>
         )}
 
-        {trips.length === 0 ? (
+        {missingAgencyLink ? (
           <Card>
-            <p className="text-center text-navy-500 text-sm">
-              No trips scheduled. Create your first trip above.
+            <p className="text-center text-navy-700 text-sm font-medium mb-2">
+              Your account is not linked to an agency yet.
+            </p>
+            <p className="text-center text-navy-500 text-xs">
+              Schedules are scoped to your agency. After your application is approved, your profile should include{" "}
+              <code className="text-navy-700">agency_id</code>. Contact support if you already manage an agency but still see this message.
+            </p>
+          </Card>
+        ) : trips.length === 0 ? (
+          <Card>
+            <p className="text-center text-navy-500 text-sm mb-2">
+              No trips scheduled for your agency yet.
+            </p>
+            <p className="text-center text-navy-400 text-xs">
+              Run <code className="text-navy-600">supabase/seed_trips.sql</code> in the Supabase SQL editor to add sample schedules for every active agency, or create a trip with{" "}
+              <strong>New Trip</strong>.
             </p>
           </Card>
         ) : (
@@ -268,9 +342,9 @@ export default function SchedulesPage() {
                       Mark Arrived
                     </Button>
                   )}
-                  {trip.status !== "cancelled" && trip.status !== "arrived" && (
-                    <Button size="sm" variant="danger" onClick={() => handleUpdateStatus(trip.id, "cancelled")}>
-                      Cancel
+                  {trip.status !== "arrived" && (
+                    <Button size="sm" variant="danger" onClick={() => handleDeleteTrip(trip.id)}>
+                      Remove trip
                     </Button>
                   )}
                 </div>

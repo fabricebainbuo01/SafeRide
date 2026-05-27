@@ -1,6 +1,5 @@
 import { Card } from "@/components/ui/Card";
 import { Shield, Users, MapPin, Smartphone, CreditCard, Headphones } from "lucide-react";
-import Link from "next/link";
 
 export default function AboutPage() {
   return (
@@ -21,8 +20,9 @@ export default function AboutPage() {
           Amour Mezam, Musango, Moghamo Express, Vatican Express, and Oasis
           Travel. Book trips between major cities such as Yaounde, Douala,
           Bamenda, Buea, Limbe, Kumba, Garoua, Maroua, Bafoussam, and
-          Ngaoundere. Pay securely with Mobile Money (MTN MoMo and Orange Money)
-          or PayPal, and receive your e-ticket instantly via SMS or WhatsApp.
+          Ngaoundere. Confirm availability with our team on WhatsApp; digital
+          wallet and card payments through licensed providers are rolling out as
+          our next major release.
         </p>
       </div>
 
@@ -64,18 +64,18 @@ export default function AboutPage() {
           </div>
           <h3 className="font-semibold text-navy-800 mb-2">Mobile Friendly</h3>
           <p className="text-sm text-navy-500 leading-relaxed">
-            Book from your phone or desktop. Our mobile app makes it easy to
-            book on the go.
+            Book from your phone or desktop. Explore routes and schedules in one place—no app install required.
           </p>
         </Card>
         <Card>
           <div className="w-10 h-10 bg-action-800 flex items-center justify-center mb-4">
             <CreditCard size={20} className="text-white" />
           </div>
-          <h3 className="font-semibold text-navy-800 mb-2">Secure Payments</h3>
+          <h3 className="font-semibold text-navy-800 mb-2">Payments</h3>
           <p className="text-sm text-navy-500 leading-relaxed">
-            Pay with MTN Mobile Money, Orange Money, or PayPal. All
-            transactions are processed securely.
+            Mobile Money and PayPal integrations are in progress. Until live PSP
+            hooks ship, bookings are confirmed with SafeRide on WhatsApp (with a
+            mock checkout path for QA).
           </p>
         </Card>
         <Card>
@@ -98,8 +98,8 @@ export default function AboutPage() {
         </p>
         <p>
           <span className="font-medium text-navy-800">Phone:</span>{" "}
-          <a href="tel:+237678149836" className="text-primary-700 hover:underline">
-            +237 678.149.836
+          <a href="tel:+237683073601" className="text-primary-700 hover:underline">
+            +237 683.073.601
           </a>
         </p>
         <p>
@@ -111,7 +111,7 @@ export default function AboutPage() {
         <p>
           <span className="font-medium text-navy-800">WhatsApp:</span>{" "}
           <a
-            href="https://wa.me/237678149836"
+            href="https://wa.me/237683073601"
             target="_blank"
             rel="noopener noreferrer"
             className="text-primary-700 hover:underline"

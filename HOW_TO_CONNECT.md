@@ -21,12 +21,36 @@
 1. In your Supabase dashboard, go to **SQL Editor**.
 2. Open the file `supabase/schema.sql` from this project.
 3. Copy its entire contents and paste it into the SQL Editor.
-4. Click **Run** to execute. This creates:
-   - Tables: `users`, `agencies`, `cities`, `buses`, `trips`, `bookings`, `bus_locations`
-   - Indexes for fast queries
-   - Triggers for seat availability and timestamps
-   - Row Level Security (RLS) policies
-   - Seed data for 20 Cameroon cities
+4. Click **Run** to execute. This creates core tables (`users`, `agencies`,
+   `agency_applications`, `cities`, `buses`, `trips`, `bookings`,
+   `booking_groups`, `bus_locations`), indexes, triggers, RPCs, RLS, and seed
+   cities — details are in `schema.sql`.
+
+### Incremental migrations (recommended order)
+
+After `schema.sql`, run each SQL file once under `supabase/migrations/`:
+
+| File | Purpose |
+|------|---------|
+| `2026_04_28_auth_user_trigger.sql` | Mirror auth users → `public.users` |
+| `2026_04_28_security_hardening.sql` | Security helpers & policies |
+| `2026_04_28_booking_groups_delete_abandoned.sql` | Abandoned checkout cleanup |
+| `2026_04_28_bookings_super_admin_select.sql` | Super-admin booking reads |
+| `2026_04_29_agency_staff_trips_buses_rls.sql` | Non-owner agency staff manage trips/buses |
+| `2026_04_29_agency_routes_verification.sql` | **`agency_routes`** + moderation RLS |
+| `2026_05_06_bi_leads_and_featured.sql` | **BI**: `leads_tracking`, `page_views`, `agencies.subscription_status`, `agency_routes.is_featured` |
+
+### Already deployed an older version?
+
+If your project pre-dates the security hardening (April 2026), apply the
+focused migration in `supabase/migrations/2026_04_28_security_hardening.sql`
+instead of re-running the whole schema. It only adds policies, triggers, and
+helper functions — no data is touched.
+
+If you already ran that migration but deployed **before** the abandoned-checkout
+rollback policy was added, also run
+`supabase/migrations/2026_04_28_booking_groups_delete_abandoned.sql` (one extra
+`DELETE` RLS policy on `booking_groups`).
 
 ## Step 3: Configure Environment Variables
 
@@ -40,6 +64,7 @@
    NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
    ```
+   Optionally add `SUPABASE_SERVICE_ROLE_KEY` for server routes such as mock payment (`src/lib/env.ts` documents optional server usage).
 
 ## Step 4: Install Dependencies & Run
 
@@ -48,43 +73,45 @@ npm install
 npm run dev
 ```
 
+Optionally run **`npm run audit`** to verify `.env.example`, doc links, and migration files align with the repo.
+
 The app will be available at `http://localhost:3000`.
 
 ---
 
-## Step 5: Create an Agency Admin (Manual Setup)
+## Step 5: Create an Agency Admin
 
-To use the admin dashboard, you need an agency and an admin user:
+The schema intentionally prevents users from self-promoting to `agency_admin`
+(or from inserting their own row in `public.agencies`). All agency onboarding
+flows through a review queue:
 
-1. Register a new account via the app with the **Agency Admin** role.
-2. In the Supabase SQL Editor, insert an agency linked to that user:
+1. Pick **one** account in `public.users` and promote it to `super_admin` from
+   the SQL Editor (one-time bootstrap):
 
-```sql
--- Replace with the actual user ID from auth.users
-INSERT INTO public.agencies (name, slug, phone, address, city, owner_id)
-VALUES (
-  'Your Agency Name',
-  'your-agency-slug',
-  '+237 600000000',
-  '123 Main Street, Douala',
-  'Douala',
-  'USER_ID_FROM_AUTH'
-);
+   ```sql
+   UPDATE public.users
+   SET role = 'super_admin'
+   WHERE email = 'you@example.com';
+   ```
 
--- Link the user to the agency
-UPDATE public.users
-SET agency_id = (SELECT id FROM public.agencies WHERE slug = 'your-agency-slug')
-WHERE id = 'USER_ID_FROM_AUTH';
-```
-
-3. Log in with that account and navigate to `/admin`.
+2. Have the prospective agency owner register normally as a passenger, then
+   visit `/dashboard/agency-application` and submit their agency details.
+3. Sign in as the super-admin and review the application at
+   `/admin/applications`. Clicking **Approve** calls the
+   `approve_agency_application` RPC, which atomically:
+   - creates the `agencies` row,
+   - sets the user's `role` to `agency_admin` and links `agency_id`,
+   - marks the application `approved`.
+4. The new agency admin can sign in and manage fleet/schedules at `/admin`,
+   publish corridors at **`/admin/routes`** (stored in **`agency_routes`** until verified).
+5. Super-admins verify route listings at **`/admin/super/routes`** before they appear on the public **`/routes`** explorer (verified + active rows).
 
 ---
 
 ## Architecture Overview
 
 ### Frontend Stack
-- **Next.js 14** (App Router) with TypeScript
+- **Next.js 16** (App Router) with TypeScript
 - **Tailwind CSS v4** with custom "Solid" design tokens
 - **Zustand** for client-side state management
 - **Lucide React** for icons
@@ -100,9 +127,10 @@ WHERE id = 'USER_ID_FROM_AUTH';
 |------|-------------|
 | Search | User selects origin, destination, date -> trips listed |
 | Booking | Select trip -> pick seats on grid -> enter passenger info -> confirm |
-| Ticket | Booking generates unique 8-char code -> viewable/printable ticket |
+| Ticket | Booking generates unique code -> viewable/printable ticket |
 | Check-In | Agency admin searches booking code -> marks as checked_in |
 | Real-time | Seat grid updates live when others book (Supabase Realtime) |
+| Routes | Agency corridors `/admin/routes` → super `/admin/super/routes` → public `/routes` |
 
 ### Database Schema (Simplified)
 
@@ -110,7 +138,9 @@ WHERE id = 'USER_ID_FROM_AUTH';
 users ──< agencies (owner)
 agencies ──< buses
 agencies ──< trips ──< bookings >── users
+agencies ──< agency_routes (verified listings for /routes)
 cities ──── trips (origin/destination FK)
+cities ──── agency_routes (origin/destination FK)
 buses ──── bus_locations
 ```
 
@@ -139,36 +169,17 @@ No gradients. No emojis. Sharp borders. High contrast.
 
 ## Project Structure
 
+See **`README.md`** for the full tree. Highlights:
+
+- **`src/app/routes/page.tsx`** — public route explorer  
+- **`src/app/admin/routes/page.tsx`** — agency-managed corridors (`agency_routes`)  
+- **`src/app/admin/super/routes/page.tsx`** — super-admin verification  
+- **`supabase/migrations/`** — incremental SQL applied after `schema.sql`
+
 ```
-src/
-  app/
-    page.tsx                    # Landing + search form
-    search/page.tsx             # Search results
-    book/[tripId]/page.tsx      # Seat selection + booking
-    ticket/[code]/page.tsx      # Ticket view/print
-    dashboard/page.tsx          # Passenger dashboard
-    admin/
-      page.tsx                  # Agency overview
-      fleet/page.tsx            # Bus management
-      schedules/page.tsx        # Trip scheduling
-      bookings/page.tsx         # Booking management + check-in
-      revenue/page.tsx          # Revenue analytics
-    auth/
-      login/page.tsx            # Sign in
-      register/page.tsx         # Register
-  components/
-    layout/                     # Navbar, Footer, AdminSidebar
-    ui/                         # Button, Input, Select, Card, Badge, SeatGrid, TripCard, TicketCard, Loading
-  lib/
-    supabase.ts                 # Client-side Supabase instance
-    supabase-server.ts          # Server-side Supabase instance
-    utils.ts                    # Formatting helpers
-  store/
-    booking-store.ts            # Zustand store for booking flow
-  types/
-    index.ts                    # TypeScript interfaces
 supabase/
-  schema.sql                   # Full database schema + RLS + seed data
+  schema.sql                   # Bootstrap schema + RLS + seeds
+  migrations/*.sql             # Incremental changes (agency routes, staff RLS, …)
 ```
 
 ---
@@ -181,4 +192,13 @@ supabase/
 | Empty search results | Ensure `cities` and `trips` tables have data (run schema.sql) |
 | RLS blocking queries | Check you're authenticated; RLS policies require `auth.uid()` |
 | Admin page redirects | User must have `role = 'agency_admin'` and a linked `agency_id` |
+| Routes empty after approval | Run migration `agency_routes`; verify rows are `verified` + `is_active` |
 | Seat not updating | Verify Supabase Realtime is enabled for the `bookings` table |
+
+## Production: remaining work
+
+Feature parity for bookings, admin, routes, and RLS is in place. **The only major
+gap before a live launch is real payment integration:** replace
+`/api/payments/mock-confirm` with verified PSP webhooks (see **`README.md` →
+“Replacing the mock payment”**). Until then, passengers confirm via WhatsApp;
+the booking page exposes a **mock** pay action for testing only.

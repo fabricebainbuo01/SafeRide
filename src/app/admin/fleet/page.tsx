@@ -2,14 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
+import { toast, toastError } from "@/lib/toast";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import type { Bus } from "@/types";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 
 export default function FleetPage() {
   const router = useRouter();
@@ -26,25 +27,32 @@ export default function FleetPage() {
   const [aisleAfter, setAisleAfter] = useState("2");
 
   const fetchBuses = useCallback(async () => {
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
+    const client = getSupabase();
+    if (!client) {
+      setLoading(false);
+      return;
+    }
+    const { data: { user: authUser } } = await client.auth.getUser();
     if (!authUser) { router.push("/auth/login"); return; }
 
-    const { data: userData } = await supabase
+    const { data: userData } = await client
       .from("users")
       .select("agency_id")
       .eq("id", authUser.id)
-      .single();
+      .maybeSingle();
 
-    if (!userData?.agency_id) return;
+    if (!userData?.agency_id) {
+      setLoading(false);
+      return;
+    }
 
-    const { data } = await supabase
+    const { data, error } = await client
       .from("buses")
       .select("*")
       .eq("agency_id", userData.agency_id)
       .order("created_at", { ascending: false });
 
+    if (error) toastError(error, "Couldn't load fleet");
     if (data) setBuses(data as unknown as Bus[]);
     setLoading(false);
   }, [router]);
@@ -65,44 +73,63 @@ export default function FleetPage() {
   };
 
   const handleSave = async () => {
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
+    const client = getSupabase();
+    if (!client) return;
+    const { data: { user: authUser } } = await client.auth.getUser();
     if (!authUser) return;
 
-    const { data: userData } = await supabase
+    const { data: userData } = await client
       .from("users")
       .select("agency_id")
       .eq("id", authUser.id)
-      .single();
+      .maybeSingle();
 
-    if (!userData?.agency_id) return;
+    if (!userData?.agency_id) {
+      toast.error("Your account is not linked to an agency");
+      return;
+    }
+
+    const capacityNum = parseInt(capacity);
+    if (!plateNumber.trim() || !model.trim() || !Number.isFinite(capacityNum) || capacityNum <= 0) {
+      toast.error("Please fill out all bus fields");
+      return;
+    }
 
     const seatLayout = {
-      rows: parseInt(rows),
-      cols: parseInt(cols),
-      aisleAfter: parseInt(aisleAfter),
-      unavailable: [],
+      rows: parseInt(rows) || Math.ceil(capacityNum / 4),
+      cols: parseInt(cols) || 4,
+      aisleAfter: parseInt(aisleAfter) || 2,
+      unavailable: [] as number[],
     };
 
     if (editingBus) {
-      await supabase
+      const { error } = await client
         .from("buses")
         .update({
           plate_number: plateNumber,
           model,
-          capacity: parseInt(capacity),
+          capacity: capacityNum,
           seat_layout: seatLayout,
         })
         .eq("id", editingBus.id);
+      if (error) {
+        toastError(error, "Update failed");
+        return;
+      }
+      toast.success("Bus updated");
     } else {
-      await supabase.from("buses").insert({
+      const { error } = await client.from("buses").insert({
         agency_id: userData.agency_id,
         plate_number: plateNumber,
         model,
-        capacity: parseInt(capacity),
+        capacity: capacityNum,
         seat_layout: seatLayout,
       });
+      if (error) {
+        toastError(error, "Add failed");
+        return;
+      }
+      toast.success("Bus added");
     }
 
     resetForm();
@@ -110,10 +137,17 @@ export default function FleetPage() {
   };
 
   const handleToggleActive = async (bus: Bus) => {
-    await supabase
+    const client = getSupabase();
+    if (!client) return;
+    const { error } = await client
       .from("buses")
       .update({ is_active: !bus.is_active })
       .eq("id", bus.id);
+    if (error) {
+      toastError(error, "Could not update bus status");
+      return;
+    }
+    toast.success(bus.is_active ? "Bus deactivated" : "Bus activated");
     fetchBuses();
   };
 

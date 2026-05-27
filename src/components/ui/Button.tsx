@@ -29,7 +29,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         ref={ref}
-        className={cn(base, variants[variant], sizes[size], className)}
+        className={cn(base, variants[variant], sizes[size], "hover-scale active-scale", className)}
         disabled={disabled || loading}
         {...props}
       >
