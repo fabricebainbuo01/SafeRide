@@ -57,6 +57,7 @@ export default function RegisterPage() {
         );
       } else {
         toast.success("Welcome to SafeRide");
+        router.refresh();
         router.push("/dashboard");
       }
     } catch (err) {

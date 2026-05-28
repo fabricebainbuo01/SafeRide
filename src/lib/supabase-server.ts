@@ -1,12 +1,37 @@
 import "server-only";
+import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 
+function createCookieServerClient(
+  cookieStore: Awaited<ReturnType<typeof cookies>>
+): SupabaseClient {
+  return createServerClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // Server Components cannot write cookies; proxy/route handlers do.
+          }
+        },
+      },
+    }
+  );
+}
+
 /**
  * Supabase client for Route Handlers when the browser forwards the session JWT
- * via `Authorization: Bearer <access_token>`. This matches how `@supabase/supabase-js`
- * stores sessions in localStorage by default (no auth cookies on the Next.js server).
+ * via `Authorization: Bearer <access_token>`.
  */
 export function createSupabaseWithAccessToken(accessToken: string): SupabaseClient {
   return createClient(
@@ -22,40 +47,12 @@ export function createSupabaseWithAccessToken(accessToken: string): SupabaseClie
 }
 
 /**
- * Server-side Supabase client that forwards the user's auth cookies so
- * RLS policies see the correct auth.uid().
- *
- * NOTE: this is a lightweight shim. For full session refresh / writeback
- * support, migrate to @supabase/ssr's createServerClient. For read-only
- * use in Route Handlers and Server Components this is sufficient.
+ * Server-side Supabase client that reads/writes auth cookies via @supabase/ssr
+ * so RLS policies and route handlers see the correct auth.uid().
  */
 export async function createServerSupabase(): Promise<SupabaseClient> {
   const cookieStore = await cookies();
-  const accessToken = cookieStore.get("sb-access-token")?.value;
-  const refreshToken = cookieStore.get("sb-refresh-token")?.value;
-
-  const headers: Record<string, string> = {};
-  if (accessToken) {
-    headers["Authorization"] = `Bearer ${accessToken}`;
-  }
-
-  const client = createClient(
-    env.NEXT_PUBLIC_SUPABASE_URL,
-    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    {
-      auth: { persistSession: false, autoRefreshToken: false },
-      global: { headers },
-    }
-  );
-
-  if (accessToken && refreshToken) {
-    await client.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    });
-  }
-
-  return client;
+  return createCookieServerClient(cookieStore);
 }
 
 /**

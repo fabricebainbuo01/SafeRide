@@ -45,6 +45,7 @@ function LoginContent() {
       }
 
       toast.success("Welcome back");
+      router.refresh();
       router.push(redirectTo);
     } catch (err) {
       toastError(err, "Sign-in failed");

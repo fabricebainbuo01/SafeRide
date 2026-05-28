@@ -1,15 +1,14 @@
 "use client";
 
-import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { publicEnv, hasSupabaseConfig } from "@/lib/env";
 
 /**
  * Browser-side Supabase singleton.
  *
- * Always import via getSupabase() so calling code can branch on the
- * "no env configured" case explicitly. Crashing the entire app on a
- * missing env var (the previous behaviour) was both unfriendly to
- * developers and the cause of /routes throwing in production.
+ * Uses @supabase/ssr so sessions are stored in cookies (not localStorage),
+ * which lets Next.js proxy/middleware and Server Components read the session.
  */
 
 let _client: SupabaseClient | null = null;
@@ -17,16 +16,9 @@ let _client: SupabaseClient | null = null;
 export function getSupabase(): SupabaseClient | null {
   if (!hasSupabaseConfig) return null;
   if (_client) return _client;
-  _client = createClient(
+  _client = createBrowserClient(
     publicEnv.NEXT_PUBLIC_SUPABASE_URL!,
-    publicEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
-    }
+    publicEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
   return _client;
 }
@@ -69,4 +61,3 @@ export async function getSessionUser(
   _sessionUserChain = task.catch(() => undefined);
   return task;
 }
-
