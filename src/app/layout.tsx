@@ -5,6 +5,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Toaster } from "@/components/ui/Toaster";
 import { PageViewTracker } from "@/components/analytics/PageViewTracker";
+import { SAFERIDE_LOGO_SRC } from "@/lib/brand";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -15,6 +16,10 @@ export const metadata: Metadata = {
   title: "SafeRide - Inter-Urban Bus Booking",
   description:
     "Book inter-urban bus trips across Cameroon. Search routes, select seats, and travel safely with SafeRide.",
+  icons: {
+    icon: SAFERIDE_LOGO_SRC,
+    apple: SAFERIDE_LOGO_SRC,
+  },
 };
 
 export default function RootLayout({

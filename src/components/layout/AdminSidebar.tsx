@@ -15,6 +15,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SafeRideLogo } from "@/components/ui/SafeRideLogo";
 
 const agencyLinks = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
@@ -46,6 +47,8 @@ export function AdminSidebar({ variant = "agency" }: AdminSidebarProps) {
   return (
     <aside className="w-64 min-h-[calc(100vh-4rem)] shrink-0 border-r border-navy-200 bg-navy-50">
       <div className="p-4">
+        <SafeRideLogo size="xs" href="/" className="mb-4 rounded bg-white px-2 py-1" />
+
         <Link
           href="/"
           className="flex items-center gap-2 text-sm text-navy-500 hover:text-navy-800 mb-6"

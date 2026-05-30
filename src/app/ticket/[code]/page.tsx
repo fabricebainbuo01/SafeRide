@@ -12,6 +12,7 @@ import type { Booking } from "@/types";
 import { Printer, Download, ArrowLeft } from "lucide-react";
 import { QRCode } from "react-qr-code";
 import { RealTimeTracker } from "@/components/booking/RealTimeTracker";
+import { SafeRideLogo } from "@/components/ui/SafeRideLogo";
 
 export default function TicketPage() {
   const params = useParams();
@@ -145,10 +146,15 @@ export default function TicketPage() {
       {/* Ticket — mirrors the downloadable PDF layout */}
       <article className="bg-white border border-navy-200 print:border-none">
         {/* Navy header bar */}
-        <header className="bg-navy-800 text-white px-6 py-5 flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-bold leading-tight">SafeRide</h1>
-            <p className="text-[11px] text-navy-300 mt-0.5">
+        <header className="bg-navy-800 text-white px-6 py-5 flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <SafeRideLogo
+              size="md"
+              href={null}
+              className="rounded bg-white px-2 py-1"
+              imageClassName="!h-9"
+            />
+            <p className="text-[11px] text-navy-300 mt-2">
               Inter-Urban Bus Ticket
             </p>
           </div>

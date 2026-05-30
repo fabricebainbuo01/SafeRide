@@ -12,6 +12,7 @@ import { toast, toastError } from "@/lib/toast";
 import type { BookingGroup, Booking, Trip } from "@/types";
 import { ArrowLeft, Printer, MessageCircle, Ticket } from "lucide-react";
 import { logLead } from "@/lib/leads";
+import { SafeRideLogo } from "@/components/ui/SafeRideLogo";
 
 const SAFERIDE_WHATSAPP_NUMBER = "237683073601";
 
@@ -175,10 +176,16 @@ export default function BookingGroupPage() {
       <Card>
         <div className="bg-navy-800 text-white p-6 -m-6 mb-6">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <h1 className="text-lg font-bold">SafeRide</h1>
-              <p className="text-navy-300 text-xs mt-0.5">
-                Booking confirmation — {bookings.length} {bookings.length === 1 ? "seat" : "seats"}
+            <div className="min-w-0">
+              <SafeRideLogo
+                size="md"
+                href={null}
+                className="rounded bg-white px-2 py-1"
+                imageClassName="!h-9"
+              />
+              <p className="text-navy-300 text-xs mt-2">
+                Booking confirmation — {bookings.length}{" "}
+                {bookings.length === 1 ? "seat" : "seats"}
               </p>
             </div>
             <Badge variant={group.payment_status === "paid" ? "success" : "warning"}>

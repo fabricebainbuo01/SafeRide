@@ -2,11 +2,33 @@ import QRCode from "qrcode";
 import { jsPDF } from "jspdf";
 import type { Booking } from "@/types";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
+import {
+  SAFERIDE_LOGO_ASPECT,
+  SAFERIDE_LOGO_SRC,
+} from "@/lib/brand";
 
 /** Numeric sRGB only — jsPDF cannot parse CSS `lab()` / `oklch()`. */
 const NAVY = { r: 30, g: 41, b: 59 };
 const NAVY_MUTED = { r: 100, g: 116, b: 139 };
 const PRIMARY = { r: 21, g: 128, b: 61 };
+
+let logoDataUrlPromise: Promise<string> | null = null;
+
+async function loadLogoDataUrl(): Promise<string> {
+  if (logoDataUrlPromise) return logoDataUrlPromise;
+  logoDataUrlPromise = (async () => {
+    const res = await fetch(SAFERIDE_LOGO_SRC);
+    if (!res.ok) throw new Error("Failed to load SafeRide logo");
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  })();
+  return logoDataUrlPromise;
+}
 
 /**
  * Vector PDF ticket — avoids DOM screenshot libs that choke on Tailwind v4 `lab()` colors.
@@ -22,10 +44,13 @@ export async function buildTicketPdf(booking: Booking): Promise<jsPDF> {
   // Header
   pdf.setFillColor(NAVY.r, NAVY.g, NAVY.b);
   pdf.rect(0, 0, pw, 26, "F");
+
+  const logoDataUrl = await loadLogoDataUrl();
+  const logoH = 10;
+  const logoW = logoH * SAFERIDE_LOGO_ASPECT;
+  pdf.addImage(logoDataUrl, "PNG", m, 5, logoW, logoH);
+
   pdf.setTextColor(255, 255, 255);
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(15);
-  pdf.text("SafeRide", m, 17);
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(8);
   pdf.text("Inter-Urban Bus Ticket", m, 22);

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MapPin } from "lucide-react";
 import { FooterPassengerApplyLink } from "@/components/layout/FooterPassengerApplyLink";
+import { SafeRideLogo } from "@/components/ui/SafeRideLogo";
 
 export function Footer() {
   return (
@@ -8,11 +9,12 @@ export function Footer() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div>
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 bg-primary-700 flex items-center justify-center">
-                <span className="text-white text-sm font-bold">SR</span>
-              </div>
-              <span className="text-white font-bold text-lg">SafeRide</span>
+            <div className="mb-4">
+              <SafeRideLogo
+                size="sm"
+                href="/"
+                className="rounded bg-white px-2 py-1"
+              />
             </div>
             <p className="text-sm text-navy-400 leading-relaxed mb-4">
               Your trusted partner for bus travel and CAMRAIL passenger routes
